@@ -1,0 +1,64 @@
+name: EditoLina test build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: editolina-test-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux-x86_64:
+    name: Linux x86_64 test build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            build-essential pkg-config libxkbcommon-dev libwayland-dev \
+            libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev \
+            libgtk-3-dev libvulkan-dev libasound2-dev
+      - name: Install stable Rust
+        uses: step-security/dtolnay-rust-toolchain@8dd607977d06adf4ed49b190381e74c17a9dd25f # v1.0.0
+        with:
+          toolchain: stable
+      - name: Build app and CLI
+        env:
+          CARGO_TERM_COLOR: always
+          PHOTOCRAFT_BUILD_SHA: ${{ github.sha }}
+          PHOTOCRAFT_BUILD_DATE: ${{ github.event.repository.updated_at }}
+        run: cargo build --release --locked -p photocraft -p photocraft-cli
+      - name: Smoke-test binaries
+        run: |
+          ./target/release/photocraft --version
+          ./target/release/photocraft-cli --help
+      - name: Assemble test package
+        run: |
+          mkdir -p dist/EditoLina-linux-x86_64
+          cp target/release/photocraft target/release/photocraft-cli dist/EditoLina-linux-x86_64/
+          cp README.md LICENSE-MIT LICENSE-APACHE NOTICE ATTRIBUTION.md dist/EditoLina-linux-x86_64/
+          printf '%s\n' 'This is an unofficial EditoLina test build for Linux x86_64.' \
+            'It is based on PhotoCraft; see README.md and NOTICE for source and credits.' \
+            'Run ./photocraft to launch the editor. Required desktop libraries must be installed.' \
+            > dist/EditoLina-linux-x86_64/TEST-BUILD.txt
+          tar -C dist -czf EditoLina-linux-x86_64-test.tar.gz EditoLina-linux-x86_64
+      - name: Upload downloadable test build
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: EditoLina-linux-x86_64-test-${{ github.sha }}
+          path: EditoLina-linux-x86_64-test.tar.gz
+          if-no-files-found: error
+          retention-days: 30
