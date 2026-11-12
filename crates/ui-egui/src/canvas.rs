@@ -495,9 +495,15 @@ fn paint_canvas(
         app.navigator_gpu.remove(&doc.id);
         // A document too large for one full-resolution texture also gets the part in view at
         // the screen's resolution, drawn over the reduced whole (#7568).
-        let in_view =
-            InView { visible: visible_doc_rect(&xf), zoom: view.zoom, key: egui::Id::unique(("pc-canvas-detail", ctx.viewport_id(), idx, primary)).value() };
-        let textures = ensure_texture_in_view(app, ctx, idx, output, Some(in_view));
+        // On the CPU canvas, rebuilding the sharp in-view detail texture can be more expensive
+        // than moving the already-cached document texture. Keep the reduced base image visible
+        // during a middle-button pan and rebuild detail once the drag ends.
+        let in_view = (!ui.input(|i| i.pointer.middle_down())).then(|| InView {
+            visible: visible_doc_rect(&xf),
+            zoom: view.zoom,
+            key: egui::Id::unique(("pc-canvas-detail", ctx.viewport_id(), idx, primary)).value(),
+        });
+        let textures = ensure_texture_in_view(app, ctx, idx, output, in_view);
         let tex = textures.as_ref().map(|t| t.texture);
         // The area the image covers: a size-changing preview's own (Image › Rotation).
         let area = textures.as_ref().map_or(doc.bounds(), |t| t.bounds);
